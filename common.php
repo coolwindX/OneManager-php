@@ -10,14 +10,14 @@ $EnvConfigs = [
     // 1 showed/enableEdit, 0 hidden/disableEdit
     // 1 base64 to save, 0 not base64
     'APIKey'            => 0b000, // used in heroku.
-    'SecretId'          => 0b000, // used in SCF.
-    'SecretKey'         => 0b000, // used in SCF.
+    'SecretId'          => 0b000, // used in SCF/CFC.
+    'SecretKey'         => 0b000, // used in SCF/CFC.
     'AccessKeyID'       => 0b000, // used in FC.
     'AccessKeySecret'   => 0b000, // used in FC.
     'HW_urn'            => 0b000, // used in FG.
     'HW_key'            => 0b000, // used in FG.
     'HW_secret'         => 0b000, // used in FG.
-    'function_name'     => 0b000, // used in heroku.
+    'HerokuappId'       => 0b000, // used in heroku.
 
     'admin'             => 0b000,
     'adminloginpage'    => 0b010,
@@ -36,6 +36,7 @@ $EnvConfigs = [
     'customTheme'       => 0b011,
     'theme'             => 0b010,
     'dontBasicAuth'     => 0b010,
+    'referrer'          => 0b011,
 
     'Driver'            => 0b100,
     'client_id'         => 0b100,
@@ -47,10 +48,12 @@ $EnvConfigs = [
     'siteid'            => 0b100,
     'refresh_token'     => 0b100,
     'token_expires'     => 0b100,
+    'activeLimit'       => 0b100,
     'default_drive_id'  => 0b100,
     'default_sbox_drive_id'=> 0b100,
 
     'diskname'          => 0b111,
+    'diskDescription'   => 0b111,
     'domain_path'       => 0b111,
     'downloadencrypt'   => 0b110,
     'guestup_path'      => 0b111,
@@ -254,6 +257,8 @@ function main($path)
         }
     }
 
+    if (!isreferhost()) return message('Must visit from designated host', 'NOT_ALLOWED', 403);
+
     // Show disks in root
     if ($files['showname'] == 'root') return render_list($path, $files);
 
@@ -279,9 +284,8 @@ function main($path)
         $tmp = adminoperate($path);
         if ($tmp['statusCode'] > 0) {
             $path1 = path_format($_SERVER['list_path'] . path_format($path));
-            //savecache('path_' . $path1, json_decode('{}',true), $_SERVER['disktag'], 1);
-            if ($path1!='/'&&substr($path1,-1)=='/') $path1=substr($path1,0,-1);
-            savecache('path_' . $path1, json_decode('{}',true), $_SERVER['disktag'], 1);
+            if ($path1!='/'&&substr($path1,-1)=='/') $path1 = substr($path1, 0, -1);
+            savecache('path_' . $path1, '', $_SERVER['disktag'], 1);
             return $tmp;
         }
     } else {
@@ -379,7 +383,7 @@ function main($path)
             $files['error']['code'] = 'unknownError';
             $files['error']['stat'] = 500;
         }
-        return message('<a href="'.$_SERVER['base_path'].'">'.getconstStr('Back').getconstStr('Home').'</a><div style="margin:8px;"><pre>' . $files['error']['message'] . '</pre></div><a href="javascript:history.back(-1)">'.getconstStr('Back').'</a>', $files['error']['code'], $files['error']['stat']);
+        return message('<div style="margin:8px;"><pre>' . $files['error']['message'] . '</pre></div><a href="javascript:history.back(-1)">'.getconstStr('Back').'</a>', $files['error']['code'], $files['error']['stat']);
     }
 }
 
@@ -419,6 +423,19 @@ function extendShow_diskenv($drive)
     return $drive->ext_show_innerenv();
 }
 
+function isreferhost() {
+    $referer = $_SERVER['referhost'];
+    if ($referer=='') return true;
+    if ($referer==$_SERVER['HTTP_HOST']) return true;
+    $referrer = getConfig('referrer');
+    if ($referrer=='') return true;
+    $arr = explode('|', $referrer);
+    foreach ($arr as $host) {
+        if ($host == $referer) return true;
+    }
+    return false;
+}
+
 function pass2cookie($name, $pass)
 {
     return md5($name . ':' . md5($pass));
@@ -434,7 +451,9 @@ function proxy_replace_domain($url, $domainforproxy)
     if (substr($domainforproxy, 0, 7)=='http://' || substr($domainforproxy, 0, 8)=='https://') $aim = $domainforproxy;
     else $aim = $http . '//' . $domainforproxy;
     if (substr($aim, -1)=='/') $aim = substr($aim, 0, -1);
-    return $aim . '/' . $uri . '&Origindomain=' . $domain;
+    if (strpos($url, '?')>0) $sp = '&';
+    else $sp = '?';
+    return $aim . '/' . $uri . $sp . 'Origindomain=' . $domain;
     //$url = str_replace($tmp, $domainforproxy, $url).'&Origindomain='.$tmp;
 }
 
@@ -533,7 +552,7 @@ function getListpath($domain)
         }
     }
     if (isset($domain_path[$domain])) return spurlencode($domain_path[$domain],'/');
-    return spurlencode($public_path,'/');
+    return spurlencode($public_path, '/');
 }
 
 function path_format($path)
@@ -602,12 +621,12 @@ function array_value_isnot_null($arr)
     return $arr!=='';
 }
 
-function curl($method, $url, $data = '', $headers = [], $returnheader = 0)
+function curl($method, $url, $data = '', $headers = [], $returnheader = 0, $location = 0)
 {
     //if (!isset($headers['Accept'])) $headers['Accept'] = '*/*';
     //if (!isset($headers['Referer'])) $headers['Referer'] = $url;
     //if (!isset($headers['Content-Type'])) $headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    if (!isset($headers['Content-Type'])) $headers['Content-Type'] = '';
+    if (!isset($headers['Content-Type'])&&!isset($headers['content-type'])) $headers['Content-Type'] = '';
     $sendHeaders = array();
     foreach ($headers as $headerName => $headerVal) {
         $sendHeaders[] = $headerName . ': ' . $headerVal;
@@ -623,6 +642,7 @@ function curl($method, $url, $data = '', $headers = [], $returnheader = 0)
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
+    if ($location) curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
     //$response['body'] = curl_exec($ch);
     if ($returnheader) {
         list($returnhead, $response['body']) = explode("\r\n\r\n", curl_exec($ch));
@@ -635,44 +655,6 @@ function curl($method, $url, $data = '', $headers = [], $returnheader = 0)
         $response['body'] = curl_exec($ch);
     }
     $response['stat'] = curl_getinfo($ch,CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    return $response;
-}
-
-function curl_request($url, $data = false, $headers = [], $returnheader = 0)
-{
-    if (!isset($headers['Accept'])) $headers['Accept'] = '*/*';
-    //if (!isset($headers['Referer'])) $headers['Referer'] = $url;
-    //if (!isset($headers['Content-Type'])) $headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    $sendHeaders = array();
-    foreach ($headers as $headerName => $headerVal) {
-        $sendHeaders[] = $headerName . ': ' . $headerVal;
-    }
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    if ($data !== false) {
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    }
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_HEADER, $returnheader);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $sendHeaders);
-    //$response['body'] = curl_exec($ch);
-    if ($returnheader) {
-        list($returnhead, $response['body']) = explode("\r\n\r\n", curl_exec($ch));
-        foreach (explode("\r\n", $returnhead) as $head) {
-            $tmp = explode(': ', $head);
-            $heads[$tmp[0]] = $tmp[1];
-        }
-        $response['returnhead'] = $heads;
-    } else {
-        $response['body'] = curl_exec($ch);
-    }
-    $response['stat'] = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     return $response;
 }
@@ -776,6 +758,7 @@ function message($message, $title = 'Message', $statusCode = 200)
     <meta name=viewport content="width=device-width,initial-scale=1">
     <body>
         <h1>' . $title . '</h1>
+        <a href="' . $_SERVER['base_path'] . '">' . getconstStr('Back') . getconstStr('Home') . '</a>
         <p>
 
 ' . $message . '
@@ -814,8 +797,9 @@ function needUpdate()
 
 function output($body, $statusCode = 200, $headers = ['Content-Type' => 'text/html'], $isBase64Encoded = false)
 {
-    //$headers['Referrer-Policy'] = 'same-origin';
-    $headers['Referrer-Policy'] = 'no-referrer';
+    if (isset($_SERVER['Set-Cookie'])) $headers['Set-Cookie'] = $_SERVER['Set-Cookie'];
+    $headers['Referrer-Policy'] = 'no-referrer'; //$headers['Referrer-Policy'] = 'same-origin';
+    $headers['X-Frame-Options'] = 'sameorigin';
     return [
         'isBase64Encoded' => $isBase64Encoded,
         'statusCode' => $statusCode,
@@ -874,12 +858,8 @@ function adminform($name = '', $pass = '', $path = '')
         <body>' . getconstStr('LoginSuccess') . '</body></html>';
         $statusCode = 201;
         date_default_timezone_set('UTC');
-        $header = [
-            'Set-Cookie' => $name . '=' . $pass . '; path=/; expires=' . date(DATE_COOKIE, strtotime('+7day')),
-            //'Location' => $path,
-            'Content-Type' => 'text/html'
-        ];
-        return output($html, $statusCode, $header);
+        $_SERVER['Set-Cookie'] = $name . '=' . $pass . '; path=/; expires=' . date(DATE_COOKIE, strtotime('+7day'));
+        return output($html, $statusCode);
     }
     $statusCode = 401;
     $html .= '
@@ -1058,8 +1038,10 @@ function EnvOpt($needUpdate = 0)
     global $slash;
     global $drive;
     ksort($EnvConfigs);
+    $disktags = explode('|', getConfig('disktag'));
     $envs = '';
-    foreach ($EnvConfigs as $env => $v) if (isCommonEnv($env)) $envs .= '\'' . $env . '\', ';
+    //foreach ($EnvConfigs as $env => $v) if (isCommonEnv($env)) $envs .= '\'' . $env . '\', ';
+    $envs = substr(json_encode(array_keys ($EnvConfigs)), 1, -1);
 
     $html = '<title>OneManager '.getconstStr('Setup').'</title>';
     if (isset($_POST['updateProgram'])&&$_POST['updateProgram']==getconstStr('updateProgram')) {
@@ -1121,13 +1103,69 @@ function EnvOpt($needUpdate = 0)
         }
         return message($html, $title);
     }
+    if (isset($_POST['config_b'])) {
+        //return output(json_encode($_POST));
+        if ($_POST['pass']!=''&&$_POST['pass']==getConfig('admin')) {
+            if ($_POST['config_b'] == 'export') {
+                foreach ($EnvConfigs as $env => $v) {
+                    if (isCommonEnv($env)) {
+                        $value = getConfig($env);
+                        if ($value) $tmp[$env] = $value;
+                    }
+                }
+                foreach ($disktags as $disktag) {
+                    $d = getConfig($disktag);
+                    if ($d === '') {
+                        $d = '';
+                    } elseif (gettype($d)=='array') {
+                        $tmp[$disktag] = $d;
+                    } else {
+                        $tmp[$disktag] = json_decode($d, true);
+                    }
+                }
+                unset($tmp['admin']);
+                return output(json_encode($tmp, JSON_PRETTY_PRINT));
+            }
+            if ($_POST['config_b'] == 'import') {
+                if (!$_POST['config_t']) return output("{\"Error\": \"Empty config.\"}", 403);
+                $c = '{' . splitfirst($_POST['config_t'], '{')[1];
+                $c = splitlast($c, '}')[0] . '}';
+                $tmp = json_decode($c, true);
+                if (!!!$tmp) return output("{\"Error\": \"Config input error. " . $c . "\"}", 403);
+                $tmptag = $tmp['disktag'];
+                foreach ($EnvConfigs as $env => $v) {
+                    if (isCommonEnv($env)) {
+                        if (isShowedEnv($env)) {
+                            if (getConfig($env)!=''&&!isset($tmp[$env])) $tmp[$env] = '';
+                        } else {
+                            unset($tmp[$env]);
+                        }
+                    }
+                }
+                foreach ($disktags as $disktag) {
+                    if (!isset($tmp[$disktag])) $tmp[$disktag] = '';
+                }
+                $tmp['disktag'] = $tmptag;
+                $response = setConfigResponse( setConfig($tmp, $_SERVER['disk_oprating']) );
+                if (api_error($response)) {
+                    return output("{\"Error\": \"" . api_error_msg($response) . "\"}", 500);
+                } else {
+                    return output("{\"Success\": \"Success\"}", 200);
+                }
+            }
+            return output(json_encode($_POST), 500);
+        } else {
+            return output("{\"Error\": \"Error admin pass\"}", 403);
+        }
+    }
+
     if (isset($_GET['preview'])) {
         $preurl = $_SERVER['PHP_SELF'] . '?preview';
     } else {
         $preurl = path_format($_SERVER['PHP_SELF'] . '/');
     }
     $html .= '
-<a href="'.$preurl.'">'.getconstStr('Back').'</a>&nbsp;&nbsp;&nbsp;<a href="'.$_SERVER['base_path'].'">'.getconstStr('Back').getconstStr('Home').'</a><br>
+<a href="'.$preurl.'">'.getconstStr('Back').'</a><br>
 <a href="https://github.com/qkqpttgf/OneManager-php">Github</a><br>';
 
     $html .= '
@@ -1137,11 +1175,12 @@ function EnvOpt($needUpdate = 0)
             <td colspan="2">'.getconstStr('PlatformConfig').'</td>
         </tr>';
     foreach ($EnvConfigs as $key => $val) if (isCommonEnv($key) && isShowedEnv($key)) {
-        if ($key=='timezone') {
-            $html .= '
+        $html .= '
         <tr>
             <td><label>' . $key . '</label></td>
-            <td width=100%>
+            <td width=100%>';
+        if ($key=='timezone') {
+            $html .= '
                 <select name="' . $key .'">';
             foreach (array_keys($timezones) as $zone) {
                 $html .= '
@@ -1149,15 +1188,10 @@ function EnvOpt($needUpdate = 0)
             }
             $html .= '
                 </select>
-                '.getconstStr('EnvironmentsDescription')[$key].'
-            </td>
-        </tr>';
+                ' . getconstStr('EnvironmentsDescription')[$key];
         } elseif ($key=='theme') {
             $theme_arr = scandir(__DIR__ . $slash . 'theme');
             $html .= '
-        <tr>
-            <td><label>' . $key . '</label></td>
-            <td width=100%>
                 <select name="' . $key .'">
                     <option value=""></option>';
             foreach ($theme_arr as $v1) {
@@ -1166,9 +1200,7 @@ function EnvOpt($needUpdate = 0)
             }
             $html .= '
                 </select>
-                '.getconstStr('EnvironmentsDescription')[$key].'
-            </td>
-        </tr>';
+                ' . getconstStr('EnvironmentsDescription')[$key];
         } /*elseif ($key=='domain_path') {
             $tmp = getConfig($key);
             $domain_path = '';
@@ -1182,16 +1214,16 @@ function EnvOpt($needUpdate = 0)
             <td width=100%><input type="text" name="' . $key .'" value="' . $domain_path . '" placeholder="' . getconstStr('EnvironmentsDescription')[$key] . '" style="width:100%"></td>
         </tr>';
         }*/ else $html .= '
-        <tr>
-            <td><label>' . $key . '</label></td>
-            <td width=100%><input type="text" name="' . $key .'" value="' . htmlspecialchars(getConfig($key)) . '" placeholder="' . getconstStr('EnvironmentsDescription')[$key] . '" style="width:100%"></td>
+                <input type="text" name="' . $key . '" value="' . htmlspecialchars(getConfig($key)) . '" placeholder="' . getconstStr('EnvironmentsDescription')[$key] . '" style="width:100%">';
+        $html .= '
+            </td>
         </tr>';
     }
     $html .= '
-        <tr><td><input type="submit" name="submit1" value="'.getconstStr('Setup').'"></td></tr>
+        <tr><td><input type="submit" name="submit1" value="' . getconstStr('Setup') . '"></td></tr>
     </form>
 </table><br>';
-    $disktags = explode('|', getConfig('disktag'));
+
     if (count($disktags)>1) {
         $html .= '
 <script src="//cdn.bootcss.com/Sortable/1.8.3/Sortable.js"></script>
@@ -1249,7 +1281,7 @@ function EnvOpt($needUpdate = 0)
         }
         envs = [' . $envs . '];
         if (envs.indexOf(t.disktag_sort.value)>-1) {
-            alert("Do not input ' . $envs . '");
+            alert(\'Do not input ' . $envs . '\');
             return false;
         }
         return true;
@@ -1276,43 +1308,42 @@ function EnvOpt($needUpdate = 0)
     <tr>
         <td>
             <form action="" method="post" style="margin: 0" onsubmit="return deldiskconfirm(this);">
-                <input type="hidden" name="disktag_del" value="'.$disktag.'">
-                <input type="submit" name="submit1" value="'.getconstStr('DelDisk').'">
-            </form>
-        </td>
-        <td>
-            <form action="" method="post" style="margin: 0" onsubmit="return renametag(this);">
-                <input type="hidden" name="disktag_rename" value="'.$disktag.'">
-                <input type="text" name="disktag_newname" value="'.$disktag.'" placeholder="' . getconstStr('EnvironmentsDescription')['disktag'] . '">
-                <input type="submit" name="submit1" value="'.getconstStr('RenameDisk').'">
+                <input type="hidden" name="disktag_del" value="' . $disktag . '">
+                <input type="submit" name="submit1" value="' . getconstStr('DelDisk') . '">
             </form>
             <form action="" method="post" style="margin: 0">
                 <input type="hidden" name="disktag_copy" value="' . $disktag . '">
                 <input type="submit" name="submit1" value="' . getconstStr('CopyDisk') . '">
             </form>
         </td>
+        <td>
+            <form action="" method="post" style="margin: 0" onsubmit="return renametag(this);">
+                <input type="hidden" name="disktag_rename" value="' . $disktag . '">
+                <input type="text" name="disktag_newname" value="' . $disktag . '" placeholder="' . getconstStr('EnvironmentsDescription')['disktag'] . '">
+                <input type="submit" name="submit1" value="' . getconstStr('RenameDisk') . '">
+            </form>
+        </td>
     </tr>
     <tr>
         <td>Driver</td>
         <td>' . getConfig('Driver', $disktag);
-            if ($diskok && baseclassofdrive($disk_tmp)=='Onedrive') $html .= ' <a href="?AddDisk=' . get_class($disk_tmp) . '&disktag=' . $disktag . '&SelectDrive">' . getconstStr('ChangeOnedrivetype') . '</a>';
+            if ($diskok && baseclassofdrive($disk_tmp)!='Aliyundrive') $html .= ' <a href="?AddDisk=' . get_class($disk_tmp) . '&disktag=' . $disktag . '&SelectDrive">' . getconstStr('ChangeDrivetype') . '</a>';
             $html .= '</td>
     </tr>
     ';
-            foreach (extendShow_diskenv($disk_tmp) as $ext_env) {
-                $html .= '<tr><td>' . $ext_env . '</td><td>' . getConfig($ext_env, $disktag) . '</td></tr>
-    ';
-            }
-
             if ($diskok) {
+                foreach (extendShow_diskenv($disk_tmp) as $ext_env) {
+                    $html .= '<tr><td>' . $ext_env . '</td><td>' . getConfig($ext_env, $disktag) . '</td></tr>
+    ';
+                }
                 $html .= '
-    <form name="'.$disktag.'" action="" method="post">
-        <input type="hidden" name="disk" value="'.$disktag.'">';
+    <form name="' . $disktag . '" action="" method="post">
+        <input type="hidden" name="disk" value="' . $disktag . '">';
                 foreach ($EnvConfigs as $key => $val) if (isInnerEnv($key) && isShowedEnv($key)) {
                     $html .= '
         <tr>
             <td><label>' . $key . '</label></td>
-            <td width=100%><input type="text" name="' . $key .'" value="' . getConfig($key, $disktag) . '" placeholder="' . getconstStr('EnvironmentsDescription')[$key] . '" style="width:100%"></td>
+            <td width=100%><input type="text" name="' . $key . '" value="' . getConfig($key, $disktag) . '" placeholder="' . getconstStr('EnvironmentsDescription')[$key] . '" style="width:100%"></td>
         </tr>';
                 }
                 $html .= '
@@ -1321,13 +1352,87 @@ function EnvOpt($needUpdate = 0)
             } else {
                 $html .= '
     <tr>
-        <td colspan="2">Please add this disk again.</td>
+        <td colspan="2">' . ($disk_tmp->error['body']?$disk_tmp->error['stat'] . '<br>' . $disk_tmp->error['body']:'Add this disk again.') . '</td>
     </tr>';
             }
             $html .= '
 </table><br>';
         }
     }
+    $html .= '
+<table>
+    <form id="config_f" name="config" action="" method="POST" onsubmit="return false;">
+    <tr>
+        <td>admin pass:<input type="password" name="pass"></td>
+        <td><button name="config_b" value="export" onclick="exportConfig(this);">export</button></td>
+    </tr>
+    <tr>
+        <td>config:<textarea name="config_t"></textarea></td>
+        <td><button name="config_b" value="import" onclick="importConfig(this);">import</button></td>
+    </tr>
+    </form>
+</table>
+<script>
+    var config_f = document.getElementById("config_f");
+    function exportConfig(b) {
+        if (config_f.pass.value=="") {
+            alert("admin pass");
+            return false;
+        }
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "");
+        xhr.setRequestHeader("Content-Type","application/x-www-form-urlencoded;charset=utf-8");
+        xhr.onload = function(e){
+            console.log(xhr.responseText+","+xhr.status);
+            if (xhr.status==200) {
+                var res = JSON.parse(xhr.responseText);
+                config_f.config_t.value = xhr.responseText;
+                config_f.parentNode.style = "width: 100%";
+                config_f.config_t.style = "width: 100%";
+                config_f.config_t.style.height = config_f.config_t.scrollHeight + "px";
+            } else {
+                alert(xhr.status+"\n"+xhr.responseText);
+            }
+        }
+        xhr.onerror = function(e){
+            alert("Network Error "+xhr.status);
+        }
+        xhr.send("pass=" + config_f.pass.value + "&config_b=" + b.value);
+    }
+    function importConfig(b) {
+        if (config_f.pass.value=="") {
+            alert("admin pass");
+            return false;
+        }
+        if (config_f.config_t.value=="") {
+            alert("input config");
+            return false;
+        } else {
+            try {
+                var tmp = JSON.parse(config_f.config_t.value);
+            } catch(e) {
+                alert("config error!");
+                return false;
+            }
+        }
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "");
+        xhr.setRequestHeader("Content-Type","application/x-www-form-urlencoded;charset=utf-8");
+        xhr.onload = function(e){
+            console.log(xhr.responseText+","+xhr.status);
+            if (xhr.status==200) {
+                //var res = JSON.parse(xhr.responseText);
+                alert("Import success");
+            } else {
+                alert(xhr.status+"\n"+xhr.responseText);
+            }
+        }
+        xhr.onerror = function(e){
+            alert("Network Error "+xhr.status);
+        }
+        xhr.send("pass=" + config_f.pass.value + "&config_t=" + encodeURIComponent(config_f.config_t.value) + "&config_b=" + b.value);
+    }
+</script><br>';
     $Diver_arr = scandir(__DIR__ . $slash . 'disk');
     $html .= '
 <select name="DriveType" onchange="changedrivetype(this.options[this.options.selectedIndex].value)">';
@@ -1369,17 +1474,17 @@ function EnvOpt($needUpdate = 0)
     }
     if (!$canOneKeyUpate) {
         $html .= '
-'.getconstStr('CannotOneKeyUpate').'<br>';
+' . getconstStr('CannotOneKeyUpate') . '<br>';
     } else {
         $html .= '
 <form name="updateform" action="" method="post">
     <input type="text" name="auth" size="6" placeholder="auth" value="qkqpttgf">
     <input type="text" name="project" size="12" placeholder="project" value="OneManager-php">
-    <button name="QueryBranchs" onclick="querybranchs();return false;">'.getconstStr('QueryBranchs').'</button>
+    <button name="QueryBranchs" onclick="querybranchs();return false;">' . getconstStr('QueryBranchs') . '</button>
     <select name="branch">
         <option value="master">master</option>
     </select>
-    <input type="submit" name="updateProgram" value="'.getconstStr('updateProgram').'">
+    <input type="submit" name="updateProgram" value="' . getconstStr('updateProgram') . '">
 </form>
 <script>
     function deldiskconfirm(t) {
@@ -1389,7 +1494,7 @@ function EnvOpt($needUpdate = 0)
     }
     function renametag(t) {
         if (t.disktag_newname.value==\'\') {
-            alert(\''.getconstStr('DiskTag').'\');
+            alert(\'' . getconstStr('DiskTag') . '\');
             return false;
         }
         if (t.disktag_newname.value==t.disktag_rename.value) {
@@ -1397,12 +1502,12 @@ function EnvOpt($needUpdate = 0)
         }
         envs = [' . $envs . '];
         if (envs.indexOf(t.disktag_newname.value)>-1) {
-            alert("Do not input ' . $envs . '");
+            alert(\'Do not input ' . $envs . '\');
             return false;
         }
         var reg = /^[a-zA-Z]([_a-zA-Z0-9]{1,20})$/;
         if (!reg.test(t.disktag_newname.value)) {
-            alert(\''.getconstStr('TagFormatAlert').'\');
+            alert(\'' . getconstStr('TagFormatAlert') . '\');
             return false;
         }
         return true;
@@ -1413,7 +1518,6 @@ function EnvOpt($needUpdate = 0)
         var xhr = new XMLHttpRequest();
         xhr.open("GET", "https://api.github.com/repos/"+document.updateform.auth.value+"/"+document.updateform.project.value+"/branches");
         //xhr.setRequestHeader("User-Agent","qkqpttgf/OneManager");
-        xhr.send(null);
         xhr.onload = function(e){
             console.log(xhr.responseText+","+xhr.status);
             if (xhr.status==200) {
@@ -1430,6 +1534,7 @@ function EnvOpt($needUpdate = 0)
         xhr.onerror = function(e){
             alert("Network Error "+xhr.status);
         }
+        xhr.send(null);
     }
 </script>
 ';
@@ -1872,11 +1977,13 @@ function render_list($path = '', $files = [])
             while (strpos($html, '<!--FileDownUrl-->')) $html = str_replace('<!--FileDownUrl-->', path_format($_SERVER['base_disk_path'] . '/' . $path), $html);
             while (strpos($html, '<!--FileEncodeReplaceUrl-->')) $html = str_replace('<!--FileEncodeReplaceUrl-->', path_format($_SERVER['base_disk_path'] . '/' . $path), $html);
             while (strpos($html, '<!--FileName-->')) $html = str_replace('<!--FileName-->', $files['name'], $html);
-            $html = str_replace('<!--FileEncodeDownUrl-->', urlencode($files['url']), $html);
+            //$html = str_replace('<!--FileEncodeDownUrl-->', urlencode($files['url']), $html);
+            while (strpos($html, '<!--FileEncodeDownUrl-->')) $html = str_replace('<!--FileEncodeDownUrl-->', urlencode(path_format($_SERVER['base_disk_path'] . '/' . $path)), $html);
             $html = str_replace('<!--constStr@ClicktoEdit-->', getconstStr('ClicktoEdit'), $html);
             $html = str_replace('<!--constStr@CancelEdit-->', getconstStr('CancelEdit'), $html);
             $html = str_replace('<!--constStr@Save-->', getconstStr('Save'), $html);
-            while (strpos($html, '<!--TxtContent-->')) $html = str_replace('<!--TxtContent-->', htmlspecialchars(curl('GET', $files['url'])['body']), $html);
+            while (strpos($html, '<!--TxtContent-->')) $html = str_replace('<!--TxtContent-->', htmlspecialchars(curl('GET', $files['url'], '', '', 0, 1)['body']), $html);
+            //while (strpos($html, '<!--TxtContent-->')) $html = str_replace('<!--TxtContent-->', htmlspecialchars(get_content(spurlencode(path_format(urldecode($path) . '/' . $files['name']), '/'))['content']['body']), $html);
             $html = str_replace('<!--constStr@FileNotSupport-->', getconstStr('FileNotSupport'), $html);
 
 
@@ -2426,6 +2533,6 @@ function render_list($path = '', $files = [])
 
     $tmp = splitfirst($html, '</title>');
     $html = $tmp[0] . '</title>' . $authinfo . $tmp[1];
-    if (isset($_SERVER['Set-Cookie'])) return output($html, $statusCode, [ 'Set-Cookie' => $_SERVER['Set-Cookie'], 'Content-Type' => 'text/html' ]);
+    //if (isset($_SERVER['Set-Cookie'])) return output($html, $statusCode, [ 'Set-Cookie' => $_SERVER['Set-Cookie'], 'Content-Type' => 'text/html' ]);
     return output($html, $statusCode);
 }

@@ -27,18 +27,14 @@ class Aliyundrive {
 
     public function ext_show_innerenv()
     {
-        return [];
+        return ['default_drive_id'];
     }
 
     public function list_files($path = '/')
     {
-        
-
 
         $files = $this->list_path($path);
 
-
-        
         return $this->files_format($files);
     }
 
@@ -81,7 +77,7 @@ class Aliyundrive {
                 $tmp['list'][$filename]['size'] = $file['size'];
                 $tmp['childcount']++;
             }
-        } elseif (isset($files['code'])) {
+        } elseif (isset($files['code'])||isset($files['error'])) {
             return $files;
         }
         //error_log1(json_encode($tmp));
@@ -92,9 +88,10 @@ class Aliyundrive {
     {
         global $exts;
         while (substr($path, -1)=='/') $path = substr($path, 0, -1);
+        if ($path == '') $path = '/';
         //$files = getcache('path_' . $path, $this->disktag);
         //if (!$files) {
-        //if (!($files = getcache('path_' . $path, $this->disktag))) {
+        if (!($files = getcache('path_' . $path, $this->disktag))) {
             if ($path == '/' || $path == '') {
                 $files = $this->fileList('root');
                 //error_log1('root_id' . $files['id']);
@@ -128,6 +125,7 @@ class Aliyundrive {
                         $files['content'] = $content1;
                         savecache('path_' . $path, $files, $this->disktag);
                     }
+                    error_log1($files['name'] . ' : ' . json_encode($files['content']) . PHP_EOL);
                 }
             }
             if (!$files) {
@@ -135,14 +133,14 @@ class Aliyundrive {
                 $files['error']['message'] = 'Not Found';
                 $files['error']['stat'] = 404;
             } elseif (isset($files['stat'])) {
-                $tmp['error']['stat'] = $files['stat'];
+                $files['error']['stat'] = $files['stat'];
                 $files['error']['code'] = 'Error';
                 $files['error']['message'] = $files['body'];
             } else {
                 savecache('path_' . $path, $files, $this->disktag, 600);
             }
-        //}
-        //error_log1('path:' . $path . ', files:' . json_encode($files));
+        }
+        //error_log1('path:' . $path . ', files:' . substr(json_encode($files), 0, 150));
         return $files;
     }
 
@@ -253,9 +251,7 @@ class Aliyundrive {
             $upload_id = $res['upload_id'];
             $result = curl('PUT', $url, $pass, [], 1);
             if ($result['stat']==200) { // 块1传好
-                $tmp1['part_number'] = 1;
-                $tmp1['etag'] = $result['returnhead']['ETag'];
-                $result = $this->fileComplete($file_id, $upload_id, [ $tmp1 ]);
+                $result = $this->fileComplete($file_id, $upload_id, [ $result['returnhead']['ETag'] ]);
                 return output(json_encode($this->files_format(json_decode($result['body'], true))), $result['stat']);
             }
         }
@@ -331,7 +327,7 @@ class Aliyundrive {
             $result = curl('PUT', $url, $content, [], 1);
             if ($result['stat']==200) { // 块1传好
                 $etag = $result['returnhead']['ETag'];
-                $result = $this->fileComplete($file_id, $upload_id, $etag);
+                $result = $this->fileComplete($file_id, $upload_id, [ $etag ]);
                 if ($result['stat']!=200) return output($result['body'], $result['stat']);
                 else return output('success', 0);
             }*/
@@ -363,9 +359,7 @@ class Aliyundrive {
             $upload_id = $res['upload_id'];
             $result = curl('PUT', $url, $content, [], 1);
             if ($result['stat']==200) { // 块1传好
-                $tmp2['part_number'] = 1;
-                $tmp2['etag'] = $result['returnhead']['ETag'];
-                $result = $this->fileComplete($file_id, $upload_id, [ $tmp2 ]);
+                $result = $this->fileComplete($file_id, $upload_id, [ $result['returnhead']['ETag'] ]);
                 if ($result['stat']!=200) return output(json_encode($this->files_format(json_decode($result['body'], true))), $result['stat']);
                 else return output('success', 0);
             }
@@ -409,9 +403,7 @@ class Aliyundrive {
                 $result = curl('PUT', $url, $content, [], 1);
                 //error_log1('2,url:' . $url .' res:' . json_encode($result));
                 if ($result['stat']==200) { // 块1传好
-                    $tmp1['part_number'] = 1;
-                    $tmp1['etag'] = $result['returnhead']['ETag'];
-                    $result = $this->fileComplete($file_id, $upload_id, [ $tmp1 ]);
+                    $result = $this->fileComplete($file_id, $upload_id, [ $result['returnhead']['ETag'] ]);
                     //error_log1('3,url:' . $url .' res:' . json_encode($result));
                     return output(json_encode($this->files_format(json_decode($result['body'], true))), $result['stat']);
                 }
@@ -701,6 +693,12 @@ class Aliyundrive {
         return message($html, $title, 201);
     }
     protected function get_access_token($refresh_token) {
+        if (!$refresh_token) {
+            $tmp['stat'] = 0;
+            $tmp['body'] = 'No refresh_token';
+            $this->error = $tmp;
+            return false;
+        }
         if (!($this->access_token = getcache('access_token', $this->disktag))) {
             $p=0;
             $tmp1['refresh_token'] = $refresh_token;
@@ -708,18 +706,18 @@ class Aliyundrive {
                 $response = curl('POST', $this->auth_url, json_encode($tmp1), ["content-type"=>"application/json; charset=utf-8"]);
                 $p++;
             }
-            error_log1(json_encode($response));
+            //error_log1(json_encode($response));
             if ($response['stat']==200) $ret = json_decode($response['body'], true);
             if (!isset($ret['access_token'])) {
-                error_log1('failed to get [' . $this->disktag . '] access_token. response' . json_encode($ret));
+                error_log1('failed to get [' . $this->disktag . '] access_token. response: ' . $response['stat'] . $response['body']);
                 //$response['body'] = json_encode(json_decode($response['body']), JSON_PRETTY_PRINT);
                 $response['body'] .= 'failed to get [' . $this->disktag . '] access_token.';
                 $this->error = $response;
                 return false;
             }
             $tmp = $ret;
-            $tmp['access_token'] = '******';
-            $tmp['refresh_token'] = '******';
+            $tmp['access_token'] = substr($tmp['access_token'], 0, 10) . '******';
+            $tmp['refresh_token'] = substr($tmp['refresh_token'], 0, 10) . '******';
             error_log1('[' . $this->disktag . '] Get access token:' . json_encode($tmp, JSON_PRETTY_PRINT));
             $this->access_token = $ret['access_token'];
             savecache('access_token', $this->access_token, $this->disktag, $ret['expires_in'] - 300);
