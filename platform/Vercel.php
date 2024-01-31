@@ -307,18 +307,23 @@ function setVercelConfig($envs, $appId, $token) {
 
 function VercelUpdate($appId, $token, $sourcePath = "") {
     if (checkBuilding($appId, $token)) return '{"error":{"message":"Another building is in progress."}}';
+    $vercelPHPversion = "0.6.1";
     $url = "https://api.vercel.com/v13/deployments";
     $header["Authorization"] = "Bearer " . $token;
     $header["Content-Type"] = "application/json";
+    $data["functions"]["api/index.php"]["runtime"] = "vercel-php@" . $vercelPHPversion;
+    $data["routes"][0]["src"] = "/(.*)";
+    $data["routes"][0]["dest"] = "/api/index.php";
+    $verceljson = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     $data["name"] = "OneManager";
     $data["project"] = $appId;
     $data["target"] = "production";
-    $data["routes"][0]["src"] = "/(.*)";
-    $data["routes"][0]["dest"] = "/api/index.php";
-    $data["functions"]["api/index.php"]["runtime"] = "vercel-php@0.6.0";
     if ($sourcePath == "") $sourcePath = splitlast(splitlast(__DIR__, "/")[0], "/")[0];
     //echo $sourcePath . "<br>";
     getEachFiles($file, $sourcePath);
+    $tmp['file'] = "vercel.json";
+    $tmp['data'] = $verceljson;
+    $file[] = $tmp;
     $data["files"] = $file;
 
     //echo json_encode($data, JSON_PRETTY_PRINT) . " ,data<br>";
@@ -357,7 +362,7 @@ function getEachFiles(&$file, $base, $path = "") {
                 $response = getEachFiles($file, $base, path_format($path . "/" . $filename));
                 if (api_error(setConfigResponse($response))) return $response;
             } else {
-                $tmp['file'] = path_format($path . "/" . $filename);
+                $tmp['file'] = substr(path_format($path . "/" . $filename), 1);
                 $tmp['data'] = file_get_contents($fromfile);
                 $file[] = $tmp;
             }
@@ -420,7 +425,7 @@ function OnekeyUpate($GitSource = 'Github', $auth = 'qkqpttgf', $project = 'OneM
 function WaitFunction($deployid = '') {
     if ($deployid == '1') {
         $tmp['stat'] = 400;
-        $tmp['body'] = 'id must provided.';
+        $tmp['body'] = 'deployID must provided.';
         return $tmp;
     }
     $token = getConfig('APIKey');
