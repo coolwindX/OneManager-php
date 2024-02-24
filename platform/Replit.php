@@ -43,13 +43,9 @@ function getGET() {
         $getstrarr = explode("&", $getstr);
         foreach ($getstrarr as $getvalues) {
             if ($getvalues != '') {
-                $pos = strpos($getvalues, "=");
-                //echo $pos;
-                if ($pos > 0) {
-                    $getarry[urldecode(substr($getvalues, 0, $pos))] = urldecode(substr($getvalues, $pos + 1));
-                } else {
-                    $getarry[urldecode($getvalues)] = true;
-                }
+                $keyvalue = splitfirst($getvalues, "=");
+                if ($keyvalue[1] != "") $getarry[$keyvalue[0]] = $keyvalue[1];
+                else $getarry[$keyvalue[0]] = true;
             }
         }
     }
@@ -282,13 +278,19 @@ function OnekeyUpate($GitSource = 'Github', $auth = 'qkqpttgf', $project = 'OneM
     $projectPath = splitlast(__DIR__, '/')[0];
 
     if ($GitSource == 'Github') {
-        // 从github下载对应tar.gz，并解压
-        $url = 'https://github.com/' . $auth . '/' . $project . '/tarball/' . urlencode($branch) . '/';
-    } elseif ($GitSource == 'HITGitlab') {
-        $url = 'https://git.hit.edu.cn/' . $auth . '/' . $project . '/-/archive/' . urlencode($branch) . '/' . $project . '-' . urlencode($branch) . '.tar.gz';
+        // 从github下载对应zip，并解压
+        $url = 'https://codeload.github.com/' . $auth . '/' . $project . '/zip/refs/heads/' . urlencode($branch);
+    } elseif ($GitSource == 'Gitee') {
+        $url = 'https://gitee.com/' . $auth . '/' . $project . '/repository/archive/' . urlencode($branch) . '.zip';
     } else return ['stat' => 500, 'body' => 'Git Source input Error!'];
-    $tarfile = $projectPath . '/github.tar.gz';
-    $githubfile = file_get_contents($url);
+    $tarfile = $projectPath . '/github.zip';
+    $context_options = array(
+        'http' => array(
+            'header' => "User-Agent: curl/7.83.1",
+        )
+    );
+    $context = stream_context_create($context_options);
+    $githubfile = file_get_contents($url, false, $context);
     if (!$githubfile) return ['stat' => 500, 'body' => 'download error from github.'];
     file_put_contents($tarfile, $githubfile);
     if (splitfirst(PHP_VERSION, '.')[0] > '5') {
