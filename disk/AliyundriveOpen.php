@@ -507,7 +507,7 @@ class AliyundriveOpen extends Aliyundrive {
                     $tmp = curl('POST', $this->my_oauth_url . 'access_token',  json_encode($data), ["Content-type" => "application/json"]);
                 } else {
                     $title = getconstStr('Wait');
-                    $html = '授权服务器可能还在启动，请稍等几秒后点击' . getconstStr('Refresh') . '按钮<br><button onclick="this.style.disabled = 1; location.href = location.href;">' . getconstStr('Refresh') . '</button>';
+                    $html = '部署在Vercel上的授权服务器可能还在启动，请稍等几秒后点击' . getconstStr('Refresh') . '按钮<br><button onclick="this.style.disabled = 1; location.href = location.href;">' . getconstStr('Refresh') . '</button>';
                     return message($html, $title, 400);
                 }
             }
@@ -705,7 +705,7 @@ class AliyundriveOpen extends Aliyundrive {
                 $tmp = no_return_curl('GET', $url . "test");
                 if ($tmp['stat'] == 0) {
                     $tmp['stat'] = 429;
-                    $tmp['body']="授权服务器连接失败，可能还在启动中，请稍后再试";
+                    $tmp['body']="连接到部署在Vercel上的授权服务器时失败，它可能还在启动中，请稍后几秒再试";
                     $this->error = $tmp;
                     return false;
                 }
