@@ -367,10 +367,7 @@ function main($path) {
     // Show disks in root
     if ($files['showname'] == 'root') return render_list($path, $files);
 
-    if (!driveisfine($_SERVER['disktag'], $drive)) {
-        if ($drive->error['stat'] == 429) return output($drive->error['body'], 429, ['Retry-After' => 10]);
-        else return render_list();
-    }
+    if (!driveisfine($_SERVER['disktag'], $drive)) return render_list();
 
     $_SERVER['ishidden'] = passhidden($path);
     if (isset($_GET['thumbnails'])) {
@@ -546,7 +543,7 @@ function driveisfine($tag, &$drive = null) {
     $disktype = getConfig('Driver', $tag);
     if (!$disktype) return false;
     if (!class_exists($disktype)) require 'disk' . $slash . $disktype . '.php';
-    if (!$drive) $drive = new $disktype($tag);
+    $drive = new $disktype($tag);
     if ($drive->isfine()) return true;
     else return false;
 }
@@ -1082,7 +1079,6 @@ function output($body, $statusCode = 200, $headers = ['Content-Type' => 'text/ht
     if (baseclassofdrive() == 'Aliyundrive' || baseclassofdrive() == 'BaiduDisk') $headers['Referrer-Policy'] = 'no-referrer';
     //$headers['Referrer-Policy'] = 'same-origin';
     //$headers['X-Frame-Options'] = 'sameorigin';
-    if (!isset($_SERVER['Content-Type'])) $headers['Content-Type'] = 'text/html';
     return [
         'isBase64Encoded' => $isBase64Encoded,
         'statusCode' => $statusCode,
@@ -2340,7 +2336,6 @@ function render_list($path = '', $files = []) {
     OneManager: An index & manager of Onedrive auth by ysun.
     HIT Gitlab: https://git.hit.edu.cn/ysun/OneManager-php
     Github: https://github.com/qkqpttgf/OneManager-php
-    Gitee: https://gitee.com/qkqpttgf/OneManager-php
 -->';
     //$authinfo = $path . '<br><pre>' . json_encode($files, JSON_PRETTY_PRINT) . '</pre>';
 
@@ -2546,7 +2541,7 @@ function render_list($path = '', $files = []) {
                         //$FolderListStr = str_replace('<!--FileEncodeReplaceUrl-->', encode_str_replace(path_format($_SERVER['base_disk_path'] . '/' . str_replace('&amp;', '&', $path) . '/' . $file['name'])), $FolderList);
                         $FolderListStr = str_replace('<!--FileEncodeReplaceUrl-->', encode_str_replace($file['name']), $FolderList);
                         $FolderListStr = str_replace('<!--FileId-->', $file['id'], $FolderListStr);
-                        $FolderListStr = str_replace('<!--FileEncodeReplaceName-->', str_replace('&', '&amp;', $file['showname'] ? $file['showname'] : $file['name']), $FolderListStr);
+                        $FolderListStr = str_replace('<!--FileEncodeReplaceName-->', str_replace('&', '&amp;', isset($file['showname']) ? $file['showname'] : $file['name']), $FolderListStr);
                         $FolderListStr = str_replace('<!--lastModifiedDateTime-->', time_format($file['time']), $FolderListStr);
                         $FolderListStr = str_replace('<!--size-->', size_format($file['size']), $FolderListStr);
                         replaceHtml($FolderListStr, "filenum", $filenum);
