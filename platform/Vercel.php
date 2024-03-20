@@ -1,5 +1,6 @@
 <?php
 // https://vercel.com/docs/api#endpoints/deployments/create-a-new-deployment
+// https://github.com/vercel-community/php
 
 function getpath() {
     $_SERVER['firstacceptlanguage'] = strtolower(splitfirst(splitfirst($_SERVER['HTTP_ACCEPT_LANGUAGE'], ';')[0], ',')[0]);
@@ -301,9 +302,26 @@ function setVercelConfig($envs, $appId, $token) {
     return VercelUpdate($appId, $token, $outPath);
 }
 
+function fetchVercelPHPVersion() {
+    $runtime = json_decode(file_get_contents("../../vercel.json"), true)['functions']['api/index.php']['runtime'];
+    $vercelPHPversion = splitlast($runtime, '@')[1];
+    if (!($vercelPHPversion = getcache("VercelPHPRuntime"))) {
+        $url = "https://raw.githubusercontent.com/vercel-community/php/master/package.json";
+        $response = curl("GET", $url);
+        if ($response['stat'] == 200) {
+            $res = json_decode($response['body'], true)['version'];
+            if ($res) {
+                savecache("VercelPHPRuntime", $res);
+                $vercelPHPversion = $res;
+            }
+        }
+    }
+    return $vercelPHPversion;
+}
+
 function VercelUpdate($appId, $token, $sourcePath = "") {
     if (checkBuilding($appId, $token)) return '{"error":{"message":"Another building is in progress."}}';
-    $vercelPHPversion = "0.6.1";
+    $vercelPHPversion = fetchVercelPHPVersion();
     $url = "https://api.vercel.com/v13/deployments";
     $header["Authorization"] = "Bearer " . $token;
     $header["Content-Type"] = "application/json";
