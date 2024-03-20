@@ -45,9 +45,13 @@ function getGET() {
         $getstrarr = explode("&", $getstr);
         foreach ($getstrarr as $getvalues) {
             if ($getvalues != '') {
-                $keyvalue = splitfirst($getvalues, "=");
-                if ($keyvalue[1] != "") $getarry[$keyvalue[0]] = $keyvalue[1];
-                else $getarry[$keyvalue[0]] = true;
+                $pos = strpos($getvalues, "=");
+                //echo $pos;
+                if ($pos > 0) {
+                    $getarry[urldecode(substr($getvalues, 0, $pos))] = urldecode(substr($getvalues, $pos + 1));
+                } else {
+                    $getarry[urldecode($getvalues)] = true;
+                }
             }
         }
     }
@@ -283,26 +287,9 @@ function setVercelConfig($envs, $appId, $token) {
     return VercelUpdate($appId, $token);
 }
 
-function fetchVercelPHPVersion() {
-    $runtime = json_decode(file_get_contents("../../vercel.json"), true)['functions']['api/index.php']['runtime'];
-    $vercelPHPversion = splitlast($runtime, '@')[1];
-    if (!($vercelPHPversion = getcache("VercelPHPRuntime"))) {
-        $url = "https://raw.githubusercontent.com/vercel-community/php/master/package.json";
-        $response = curl("GET", $url);
-        if ($response['stat'] == 200) {
-            $res = json_decode($response['body'], true)['version'];
-            if ($res) {
-                savecache("VercelPHPRuntime", $res);
-                $vercelPHPversion = $res;
-            }
-        }
-    }
-    return $vercelPHPversion;
-}
-
 function VercelUpdate($appId, $token, $sourcePath = "") {
     if (checkBuilding($appId, $token)) return '{"error":{"message":"Another building is in progress."}}';
-    $vercelPHPversion = fetchVercelPHPVersion();
+    $vercelPHPversion = "0.6.1";
     $url = "https://api.vercel.com/v13/deployments";
     $header["Authorization"] = "Bearer " . $token;
     $header["Content-Type"] = "application/json";

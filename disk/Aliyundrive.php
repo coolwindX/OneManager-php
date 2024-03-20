@@ -908,7 +908,7 @@ class Aliyundrive {
         <input type="text" name="diskname" placeholder="' . getconstStr('EnvironmentsDescription')['diskname'] . '" style="width:100%"><br>
         <br>
 
-        <input type="submit" value="' . getconstStr('Submit') . '" disabled>
+        <input type="submit" value="' . getconstStr('Submit') . '">
     </form>
 </div>
     <script>
@@ -937,7 +937,7 @@ class Aliyundrive {
             return true;
         }
     </script>';
-        $title = '已禁用，请使用Open方式';
+        $title = 'Select Account Type';
         return message($html, $title, 201);
     }
     protected function get_access_token($refresh_token) {
