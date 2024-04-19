@@ -65,13 +65,9 @@ function getGET() {
         $getstrarr = explode("&", $getstr);
         foreach ($getstrarr as $getvalues) {
             if ($getvalues != '') {
-                $pos = strpos($getvalues, "=");
-                //echo $pos;
-                if ($pos > 0) {
-                    $getarry[urldecode(substr($getvalues, 0, $pos))] = urldecode(substr($getvalues, $pos + 1));
-                } else {
-                    $getarry[urldecode($getvalues)] = true;
-                }
+                $keyvalue = splitfirst($getvalues, "=");
+                if ($keyvalue[1] != "") $getarry[$keyvalue[0]] = $keyvalue[1];
+                else $getarry[$keyvalue[0]] = true;
             }
         }
     }
@@ -333,11 +329,8 @@ function_name:' . $_SERVER['function_name'] . '<br>
 
 function OnekeyUpate($GitSource = 'Github', $auth = 'qkqpttgf', $project = 'OneManager-php', $branch = 'master') {
     if ($GitSource == 'Github') {
-        //'https://github.com/qkqpttgf/OneManager-php/tarball/master/';
         $source = 'https://github.com/' . $auth . '/' . $project . '/tarball/' . urlencode($branch) . '/';
-    } elseif ($GitSource == 'HITGitlab') {
-        $source = 'https://git.hit.edu.cn/' . $auth . '/' . $project . '/-/archive/' . urlencode($branch) . '/' . $project . '-' . urlencode($branch) . '.tar.gz';
-    } else return ['stat' => 403, 'body' => json_encode(['id' => 'Error', 'message' => 'Git Source input Error!'])];
+    } else return ['stat' => 403, 'body' => json_encode(['id' => 'Error', 'message' => 'Only github!'])];
 
     return updateHerokuapp(getConfig('HerokuappId'), getConfig('APIKey'), $source);
 }
